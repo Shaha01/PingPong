@@ -102,7 +102,15 @@ h2 { font-size: clamp(28px, 6vw, 60px); }
 .keys { margin: 0; text-align: center; font-family: var(--f-mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); }
 kbd { display: inline-block; min-width: 22px; padding: 2px 6px; margin: 0 2px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--bg-3); color: var(--text); font: inherit; text-align: center; }
 
+/* Credit badge */
+.credit { display: flex; justify-content: center; padding: 8px 16px 28px; }
+.credit__badge { display: inline-flex; align-items: center; gap: 14px; padding: 14px 22px; border: 1px solid var(--line-2); border-radius: 14px; background: rgba(255,255,255,.03); text-decoration: none; color: var(--text); transition: border-color .3s var(--ease), transform .3s var(--ease); }
+.credit__badge:hover { border-color: var(--text); transform: translateY(-2px); }
+.credit__label { font-family: var(--f-mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.credit__name { font-family: var(--f-display); font-style: italic; font-weight: 800; font-size: 16px; }
+
 @media (max-width: 600px) {
+  .credit__label { display: none; }
   .hud__name, .keys { display: none; }
   .btn { padding: 12px 20px; font-size: 14px; }
 }
