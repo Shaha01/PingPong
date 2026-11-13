@@ -1,22 +1,78 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pong Game</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ping Pong — Shahriyor</title>
+  <meta name="description" content="Ping Pong в стиле F1: 1 или 2 игрока, старт по огням, до 15 очков.">
+  <meta name="theme-color" content="#050506">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23050506'/%3E%3Ccircle cx='32' cy='30' r='10' fill='%23fff'/%3E%3Crect x='14' y='45' width='12' height='5' rx='1' fill='%23ff2a3d'/%3E%3Crect x='27' y='45' width='12' height='5' rx='1' fill='%23ffd400'/%3E%3Crect x='40' y='45' width='12' height='5' rx='1' fill='%232b4cff'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <canvas id="pongCanvas" width="1000" height="700"></canvas>
-        <div id="startScreen" class="start-screen">
-            <button id="startButton" class="control-button">Старт</button>
-        </div>
-        <div class="button-container">
-            <button id="onePlayerButton" class="control-button">1 Игрок</button>
-            <button id="twoPlayerButton" class="control-button">2 Игрока</button>
-        </div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="logo"><span class="logo__text">PING</span><span class="logo__stripes" aria-hidden="true"><i></i><i></i><i></i></span><span class="logo__text">PONG</span></div>
+    <div class="top__right">
+      <span class="live"><i></i>LIVE</span>
+      <button id="soundBtn" class="sound is-on" type="button" aria-label="Звук"><i></i><i></i><i></i><i></i></button>
     </div>
-    <script src="script.js"></script>
+  </header>
+
+  <main class="game">
+    <div class="hud">
+      <div class="hud__side hud__side--blue"><span class="hud__name" id="nameL">ИГРОК</span><b id="scoreL">0</b></div>
+      <div class="hud__mid"><span id="modeLabel">1 ИГРОК</span><small>ДО 15</small></div>
+      <div class="hud__side hud__side--red"><b id="scoreR">0</b><span class="hud__name" id="nameR">КОМПЬЮТЕР</span></div>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="pongCanvas" width="1000" height="700"></canvas>
+
+      <div class="overlay" id="menu">
+        <p class="eyebrow">Built for the top league</p>
+        <h1>PING<span>/</span>PONG</h1>
+        <div class="modes">
+          <button class="btn btn--primary" id="onePlayerButton" type="button">1 Игрок</button>
+          <button class="btn btn--ghost" id="twoPlayerButton" type="button">2 Игрока</button>
+        </div>
+        <p class="hint">Мышь / W S / касание — ты · первый до 15 очков</p>
+      </div>
+
+      <div class="overlay is-hidden" id="lightsScreen">
+        <div class="lights" id="lights">
+          <div class="light"><i></i><i></i></div>
+          <div class="light"><i></i><i></i></div>
+          <div class="light"><i></i><i></i></div>
+          <div class="light"><i></i><i></i></div>
+          <div class="light"><i></i><i></i></div>
+        </div>
+        <p class="go" id="goText">&nbsp;</p>
+      </div>
+
+      <div class="overlay is-hidden" id="endScreen">
+        <p class="eyebrow">Финиш</p>
+        <h2 id="winner"></h2>
+        <p class="final" id="finalScore"></p>
+        <div class="modes">
+          <button class="btn btn--primary" id="againButton" type="button">Ещё раз</button>
+          <button class="btn btn--ghost" id="menuButton" type="button">Меню</button>
+        </div>
+      </div>
+
+      <div class="overlay is-hidden" id="pauseScreen">
+        <h2>Пауза</h2>
+        <p class="hint">Пробел или P — продолжить</p>
+      </div>
+    </div>
+
+    <p class="keys"><kbd>W</kbd><kbd>S</kbd> левый · <kbd>↑</kbd><kbd>↓</kbd> правый (2 игрока) · <kbd>Пробел</kbd> пауза</p>
+  </main>
+
+  <script src="script.js"></script>
 </body>
 </html>
