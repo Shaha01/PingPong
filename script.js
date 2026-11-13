@@ -5,7 +5,7 @@ const H = canvas.height;
 
 const $ = (id) => document.getElementById(id);
 const ui = {
-  menu: $('menu'), lights: $('lightsScreen'), end: $('endScreen'), pause: $('pauseScreen'),
+  menu: $('menu'), online: $('onlineScreen'), lights: $('lightsScreen'), end: $('endScreen'), pause: $('pauseScreen'),
   scoreL: $('scoreL'), scoreR: $('scoreR'), nameL: $('nameL'), nameR: $('nameR'), mode: $('modeLabel'),
   goText: $('goText'), winner: $('winner'), final: $('finalScore'), sound: $('soundBtn'),
 };
@@ -27,6 +27,7 @@ const state = {
   ball: { x: W / 2, y: H / 2, vx: 0, vy: 0, trail: [] },
   particles: [],
   shake: 0,
+  online: null, // null | 'host' | 'guest'
 };
 let soundOn = true;
 let audio;
@@ -92,6 +93,12 @@ function burst(x, y, color) {
 
 /* ---------- flow ---------- */
 function setNames() {
+  if (state.online) {
+    ui.mode.textContent = 'ОНЛАЙН';
+    ui.nameL.textContent = state.online === 'host' ? 'ТЫ' : 'СОПЕРНИК';
+    ui.nameR.textContent = state.online === 'host' ? 'СОПЕРНИК' : 'ТЫ';
+    return;
+  }
   ui.mode.textContent = state.twoPlayers ? '2 ИГРОКА' : '1 ИГРОК';
   ui.nameL.textContent = state.twoPlayers ? 'ИГРОК 1' : 'ИГРОК';
   ui.nameR.textContent = state.twoPlayers ? 'ИГРОК 2' : 'КОМПЬЮТЕР';
@@ -99,7 +106,7 @@ function setNames() {
 
 function newGame(twoPlayers) {
   clearTimers();
-  state.twoPlayers = twoPlayers;
+  state.twoPlayers = twoPlayers || state.online === 'host';
   state.left.score = state.right.score = 0;
   state.left.y = state.right.y = (H - PADDLE_H) / 2;
   state.ball.vx = state.ball.vy = 0;
@@ -111,6 +118,8 @@ function newGame(twoPlayers) {
   hide(ui.menu);
   hide(ui.end);
   hide(ui.pause);
+  hide(ui.online);
+  if (state.online === 'host') send({ t: 'start' });
   startLights(() => { serve(); state.mode = 'playing'; });
 }
 
@@ -135,9 +144,15 @@ function startLights(done) {
 }
 
 function finish() {
+  send({ t: 'over', l: state.left.score, r: state.right.score });
+  showEnd();
+}
+
+function showEnd() {
   state.mode = 'over';
   const leftWon = state.left.score > state.right.score;
-  ui.winner.textContent = state.twoPlayers ? (leftWon ? 'Игрок 1 победил' : 'Игрок 2 победил') : (leftWon ? 'Ты победил!' : 'Победил компьютер');
+  const meWon = state.online === 'guest' ? !leftWon : leftWon;
+  ui.winner.textContent = state.online ? (meWon ? 'Ты победил!' : 'Победил соперник') : state.twoPlayers ? (leftWon ? 'Игрок 1 победил' : 'Игрок 2 победил') : (leftWon ? 'Ты победил!' : 'Победил компьютер');
   ui.winner.style.color = leftWon ? COLORS.blue : COLORS.red;
   ui.final.textContent = state.left.score + ' : ' + state.right.score;
   beep(leftWon ? 660 : 220, 0.4, 'sawtooth', 0.07);
@@ -145,12 +160,15 @@ function finish() {
 }
 
 function togglePause() {
-  if (state.mode === 'playing') { state.mode = 'paused'; show(ui.pause); }
-  else if (state.mode === 'paused') { state.mode = 'playing'; hide(ui.pause); }
+  if (state.online === 'guest') { send({ t: 'pause' }); return; }
+  if (state.mode === 'playing') { state.mode = 'paused'; show(ui.pause); send({ t: 'pv', v: 1 }); }
+  else if (state.mode === 'paused') { state.mode = 'playing'; hide(ui.pause); send({ t: 'pv', v: 0 }); }
 }
 
 function toMenu() {
   clearTimers();
+  closeOnline();
+  hide(ui.online);
   state.mode = 'idle';
   hide(ui.end); hide(ui.pause); hide(ui.lights);
   show(ui.menu);
@@ -165,7 +183,9 @@ function movePaddles() {
   if (left.down) left.y += PADDLE_SPEED;
   left.y = clampY(left.y);
 
-  if (state.twoPlayers) {
+  if (state.online === 'host') {
+    // right paddle is driven by the remote player
+  } else if (state.twoPlayers) {
     if (right.up) right.y -= PADDLE_SPEED;
     if (right.down) right.y += PADDLE_SPEED;
   } else {
@@ -188,6 +208,7 @@ function hitPaddle(paddle, dir) {
   burst(b.x, b.y, dir > 0 ? COLORS.blue : COLORS.red);
   state.shake = 5;
   beep(dir > 0 ? 330 : 280, 0.07, 'square', 0.06);
+  send({ t: 'fx', k: 'hit', x: b.x, y: b.y, d: dir });
 }
 
 function point(winnerSide) {
@@ -197,6 +218,7 @@ function point(winnerSide) {
   burst(state.ball.x, state.ball.y, COLORS.yellow);
   state.shake = 12;
   beep(120, 0.3, 'sawtooth', 0.07);
+  send({ t: 'fx', k: 'pt', x: state.ball.x, y: state.ball.y });
   if (w.score >= WIN_SCORE) {
     state.ball.vx = state.ball.vy = 0;
     finish();
@@ -234,8 +256,10 @@ function moveBall() {
 }
 
 function update() {
-  if (state.mode === 'playing') { movePaddles(); moveBall(); }
+  if (state.online === 'guest') guestStep();
+  else if (state.mode === 'playing') { movePaddles(); moveBall(); }
   else if (state.mode === 'serving' || state.mode === 'countdown') movePaddles();
+  if (state.online === 'host') send({ t: 's', bx: state.ball.x, by: state.ball.y, ly: state.left.y, sl: state.left.score, sr: state.right.score });
   state.particles.forEach((p) => { p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy *= 0.96; p.life -= 0.03; });
   state.particles = state.particles.filter((p) => p.life > 0);
   state.shake *= 0.85;
@@ -333,7 +357,7 @@ requestAnimationFrame(frame);
 function pointerToPaddle(clientY) {
   const rect = canvas.getBoundingClientRect();
   const y = ((clientY - rect.top) / rect.height) * H - PADDLE_H / 2;
-  state.left.y = clampY(y);
+  (state.online === 'guest' ? state.right : state.left).y = clampY(y);
 }
 canvas.addEventListener('mousemove', (e) => pointerToPaddle(e.clientY));
 canvas.addEventListener('touchmove', (e) => { e.preventDefault(); pointerToPaddle(e.touches[0].clientY); }, { passive: false });
@@ -347,7 +371,8 @@ function setKey(e, val) {
   const k = KEYS[e.key.length === 1 ? e.key.toLowerCase() : e.key];
   if (!k) return;
   e.preventDefault();
-  state[k[0]][k[1]] = val;
+  const side = state.online === 'guest' ? 'right' : state.online === 'host' ? 'left' : k[0];
+  state[side][k[1]] = val;
 }
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.key === 'p' || e.key === 'P') { e.preventDefault(); togglePause(); return; }
@@ -361,5 +386,168 @@ window.addEventListener('blur', () => {
 
 $('onePlayerButton').addEventListener('click', () => newGame(false));
 $('twoPlayerButton').addEventListener('click', () => newGame(true));
-$('againButton').addEventListener('click', () => newGame(state.twoPlayers));
+$('againButton').addEventListener('click', () => {
+  if (state.online === 'guest') { send({ t: 'again' }); return; }
+  newGame(state.twoPlayers);
+});
 $('menuButton').addEventListener('click', toMenu);
+
+/* ---------- online (WebRTC via PeerJS) ---------- */
+const PREFIX = 'pingpong-shaha01-';
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+let peer = null;
+let conn = null;
+
+function send(msg) {
+  if (conn && conn.open) conn.send(msg);
+}
+
+function onlineStatus(text) { $('onlineStatus').textContent = text || ' '; }
+
+function closeOnline() {
+  const c = conn, p = peer;
+  conn = null; peer = null;
+  state.online = null;
+  try { if (c) c.close(); } catch (e) { /* ignore */ }
+  try { if (p) p.destroy(); } catch (e) { /* ignore */ }
+}
+
+function showOnlineMenu() {
+  closeOnline();
+  hide(ui.menu);
+  show(ui.online);
+  show($('onlineChoose'));
+  hide($('onlineWait'));
+  onlineStatus(typeof Peer === 'undefined' ? 'Не удалось загрузить сетевую библиотеку' : '');
+}
+
+function connectionLost() {
+  if (!state.online) return;
+  toMenu();
+  alert('Соперник отключился');
+}
+
+function bindConn(c, role) {
+  conn = c;
+  c.on('data', (m) => (role === 'host' ? hostMessage(m) : guestMessage(m)));
+  c.on('close', connectionLost);
+  c.on('error', connectionLost);
+}
+
+function createRoom() {
+  if (typeof Peer === 'undefined') return onlineStatus('Сеть недоступна');
+  hide($('onlineChoose'));
+  show($('onlineWait'));
+  $('roomCode').textContent = '----';
+  onlineStatus('Создаём комнату…');
+  const tryCreate = () => {
+    const code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+    const p = new Peer(PREFIX + code);
+    peer = p;
+    p.on('open', () => {
+      state.online = 'host';
+      $('roomCode').textContent = code;
+      onlineStatus('Ждём соперника…');
+    });
+    p.on('connection', (c) => {
+      if (conn) { c.close(); return; }
+      c.on('open', () => {
+        bindConn(c, 'host');
+        newGame(true);
+      });
+    });
+    p.on('error', (err) => {
+      if (err.type === 'unavailable-id') { p.destroy(); tryCreate(); }
+      else onlineStatus('Ошибка сети: ' + err.type);
+    });
+  };
+  tryCreate();
+}
+
+function joinRoom(code) {
+  if (typeof Peer === 'undefined') return onlineStatus('Сеть недоступна');
+  code = code.trim().toUpperCase();
+  if (code.length !== 4) return onlineStatus('Введи 4-символьный код');
+  onlineStatus('Подключаемся…');
+  const p = new Peer();
+  peer = p;
+  const timeout = setTimeout(() => { if (!conn) { onlineStatus('Комната не найдена'); closeOnline(); } }, 10000);
+  p.on('open', () => {
+    const c = p.connect(PREFIX + code);
+    c.on('open', () => {
+      clearTimeout(timeout);
+      state.online = 'guest';
+      bindConn(c, 'guest');
+      onlineStatus('Подключено! Ждём старта…');
+    });
+  });
+  p.on('error', (err) => {
+    clearTimeout(timeout);
+    onlineStatus(err.type === 'peer-unavailable' ? 'Комната не найдена' : 'Ошибка сети: ' + err.type);
+    closeOnline();
+  });
+}
+
+/* host receives guest input */
+function hostMessage(m) {
+  if (m.t === 'in') state.right.y = clampY(+m.y || 0);
+  else if (m.t === 'pause') togglePause();
+  else if (m.t === 'again' && state.mode === 'over') newGame(true);
+}
+
+/* guest receives host state */
+let lastSentY = -1;
+function guestMessage(m) {
+  if (m.t === 's') {
+    const b = state.ball;
+    b.trail.push({ x: b.x, y: b.y });
+    if (b.trail.length > 14) b.trail.shift();
+    b.x = m.bx; b.y = m.by;
+    state.left.y = m.ly;
+    if (m.sl !== state.left.score) { state.left.score = m.sl; updateScore('left'); }
+    if (m.sr !== state.right.score) { state.right.score = m.sr; updateScore('right'); }
+  } else if (m.t === 'start') {
+    state.twoPlayers = true;
+    state.left.score = state.right.score = 0;
+    state.ball.trail = [];
+    setNames();
+    updateScore();
+    hide(ui.online); hide(ui.menu); hide(ui.end); hide(ui.pause);
+    startLights(() => {});
+    state.mode = 'remote';
+  } else if (m.t === 'fx') {
+    if (m.k === 'hit') {
+      burst(m.x, m.y, m.d > 0 ? COLORS.blue : COLORS.red);
+      state.shake = 5;
+      beep(m.d > 0 ? 330 : 280, 0.07, 'square', 0.06);
+    } else {
+      burst(m.x, m.y, COLORS.yellow);
+      state.shake = 12;
+      beep(120, 0.3, 'sawtooth', 0.07);
+    }
+  } else if (m.t === 'over') {
+    state.left.score = m.l; state.right.score = m.r;
+    updateScore();
+    showEnd();
+  } else if (m.t === 'pv') {
+    if (m.v) show(ui.pause); else hide(ui.pause);
+  }
+}
+
+/* guest: move own (right) paddle locally, report position */
+function guestStep() {
+  const r = state.right;
+  if (r.up) r.y -= PADDLE_SPEED;
+  if (r.down) r.y += PADDLE_SPEED;
+  r.y = clampY(r.y);
+  if (r.y !== lastSentY) { lastSentY = r.y; send({ t: 'in', y: r.y }); }
+}
+
+$('onlineButton').addEventListener('click', showOnlineMenu);
+$('createRoom').addEventListener('click', createRoom);
+$('joinForm').addEventListener('submit', (e) => { e.preventDefault(); joinRoom($('roomInput').value); });
+$('onlineBack').addEventListener('click', () => { closeOnline(); hide(ui.online); show(ui.menu); });
+$('roomCode').addEventListener('click', () => {
+  const code = $('roomCode').textContent;
+  if (navigator.clipboard && code !== '----') navigator.clipboard.writeText(code).then(() => onlineStatus('Код скопирован'), () => {});
+});

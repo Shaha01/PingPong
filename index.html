@@ -39,8 +39,26 @@
         <div class="modes">
           <button class="btn btn--primary" id="onePlayerButton" type="button">1 Игрок</button>
           <button class="btn btn--ghost" id="twoPlayerButton" type="button">2 Игрока</button>
+          <button class="btn btn--ghost" id="onlineButton" type="button">Онлайн</button>
         </div>
         <p class="hint">Мышь / W S / касание — ты · первый до 15 очков</p>
+      </div>
+
+      <div class="overlay is-hidden" id="onlineScreen">
+        <p class="eyebrow">Онлайн · по ID комнаты</p>
+        <div class="online" id="onlineChoose">
+          <button class="btn btn--primary" id="createRoom" type="button">Создать комнату</button>
+          <form class="join" id="joinForm">
+            <input id="roomInput" maxlength="4" placeholder="КОД" autocomplete="off" autocapitalize="characters" spellcheck="false">
+            <button class="btn btn--ghost" type="submit">Войти</button>
+          </form>
+        </div>
+        <div class="online is-hidden" id="onlineWait">
+          <p class="hint">Отправь этот код сопернику:</p>
+          <button class="code" id="roomCode" type="button" title="Копировать">----</button>
+        </div>
+        <p class="hint" id="onlineStatus">&nbsp;</p>
+        <button class="btn btn--ghost" id="onlineBack" type="button">Назад</button>
       </div>
 
       <div class="overlay is-hidden" id="lightsScreen">
@@ -73,6 +91,7 @@
     <p class="keys"><kbd>W</kbd><kbd>S</kbd> левый · <kbd>↑</kbd><kbd>↓</kbd> правый (2 игрока) · <kbd>Пробел</kbd> пауза</p>
   </main>
 
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
