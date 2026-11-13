@@ -27,6 +27,8 @@ const state = {
   ball: { x: W / 2, y: H / 2, vx: 0, vy: 0, trail: [] },
   particles: [],
   shake: 0,
+  rally: 0,
+  popups: [],
   online: null, // null | 'host' | 'guest'
 };
 let soundOn = true;
@@ -83,6 +85,15 @@ function serve(dir) {
   b.trail = [];
 }
 
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const GOOD_EDGE = ['ВПРИТИРКУ!', 'КРАЕМ!', 'ЛОВКО!', 'ЮВЕЛИРНО!'];
+const GOOD_FAST = ['КРУТО ОТБИЛ!', 'СПАС!', 'ЖЕЛЕЗНО!', 'ВОТ ЭТО РЕАКЦИЯ!', 'НЕПРОБИВАЕМЫЙ!', 'РАКЕТА ПОЙМАНА!'];
+const MISS = ['МИМО!', 'ПРОСПАЛ!', 'НЕ УСПЕЛ!', 'ЗЕВНУЛ!', 'ПРОПУСТИЛ!', 'ГДЕ ТЫ?', 'ОЙ-ОЙ!', 'ПИТ-СТОП?'];
+
+function addPopup(p) {
+  state.popups.push({ text: p.text, x: p.x, y: p.y, color: p.color, life: 1 });
+}
+
 function burst(x, y, color) {
   for (let i = 0; i < 16; i++) {
     const a = Math.random() * Math.PI * 2;
@@ -113,6 +124,8 @@ function newGame(twoPlayers) {
   state.ball.x = W / 2;
   state.ball.y = H / 2;
   state.ball.trail = [];
+  state.rally = 0;
+  state.popups = [];
   setNames();
   updateScore();
   hide(ui.menu);
@@ -201,14 +214,25 @@ function movePaddles() {
 function hitPaddle(paddle, dir) {
   const b = state.ball;
   const rel = (b.y - (paddle.y + PADDLE_H / 2)) / (PADDLE_H / 2); // -1..1
-  const speed = Math.min(Math.hypot(b.vx, b.vy) * 1.06, MAX_SPEED);
+  const prevSpeed = Math.hypot(b.vx, b.vy);
+  const speed = Math.min(prevSpeed * 1.06, MAX_SPEED);
   const angle = rel * (Math.PI / 3.2);
   b.vx = Math.cos(angle) * speed * dir;
   b.vy = Math.sin(angle) * speed;
   burst(b.x, b.y, dir > 0 ? COLORS.blue : COLORS.red);
   state.shake = 5;
   beep(dir > 0 ? 330 : 280, 0.07, 'square', 0.06);
-  send({ t: 'fx', k: 'hit', x: b.x, y: b.y, d: dir });
+  state.rally++;
+  let text = null;
+  if (Math.abs(rel) > 0.88) text = pick(GOOD_EDGE);
+  else if (prevSpeed >= 12) text = pick(GOOD_FAST);
+  else if (state.rally % 7 === 0) text = state.rally + ' ПОДРЯД!';
+  let p = null;
+  if (text) {
+    p = { text, x: dir > 0 ? 190 : W - 190, y: Math.max(70, Math.min(H - 70, b.y)), color: dir > 0 ? COLORS.blue : COLORS.red };
+    addPopup(p);
+  }
+  send({ t: 'fx', k: 'hit', x: b.x, y: b.y, d: dir, p });
 }
 
 function point(winnerSide) {
@@ -218,7 +242,11 @@ function point(winnerSide) {
   burst(state.ball.x, state.ball.y, COLORS.yellow);
   state.shake = 12;
   beep(120, 0.3, 'sawtooth', 0.07);
-  send({ t: 'fx', k: 'pt', x: state.ball.x, y: state.ball.y });
+  const loserLeft = winnerSide === 'right';
+  const p = { text: pick(MISS), x: loserLeft ? 190 : W - 190, y: Math.max(70, Math.min(H - 70, state.ball.y)), color: loserLeft ? COLORS.blue : COLORS.red };
+  addPopup(p);
+  state.rally = 0;
+  send({ t: 'fx', k: 'pt', x: state.ball.x, y: state.ball.y, p });
   if (w.score >= WIN_SCORE) {
     state.ball.vx = state.ball.vy = 0;
     finish();
@@ -262,6 +290,8 @@ function update() {
   if (state.online === 'host') send({ t: 's', bx: state.ball.x, by: state.ball.y, ly: state.left.y, sl: state.left.score, sr: state.right.score });
   state.particles.forEach((p) => { p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy *= 0.96; p.life -= 0.03; });
   state.particles = state.particles.filter((p) => p.life > 0);
+  state.popups.forEach((q) => { q.y -= 0.7; q.life -= 0.012; });
+  state.popups = state.popups.filter((q) => q.life > 0);
   state.shake *= 0.85;
 }
 
@@ -337,6 +367,31 @@ function render() {
     ctx.fillRect(p.x, p.y, 4, 4);
   });
   ctx.globalAlpha = 1;
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  state.popups.forEach((q) => {
+    const age = 1 - q.life;
+    const scale = age < 0.12 ? 0.6 + (age / 0.12) * 0.5 : 1.1 - Math.min(age - 0.12, 0.3) * 0.2;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, q.life * 2.2);
+    ctx.translate(q.x, q.y);
+    ctx.rotate(-0.08);
+    ctx.scale(scale, scale);
+    ctx.font = 'italic 900 34px Unbounded, "Arial Black", sans-serif';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = 'rgba(5,5,6,0.9)';
+    ctx.strokeText(q.text, 0, 0);
+    ctx.shadowColor = q.color;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(q.text, 0, 0);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  });
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
 
@@ -395,6 +450,19 @@ $('menuButton').addEventListener('click', toMenu);
 /* ---------- online (WebRTC via PeerJS) ---------- */
 const PREFIX = 'pingpong-shaha01-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const PEER_OPTS = {
+  debug: 0,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ],
+  },
+};
+const RETRY_ERRORS = ['server-error', 'network', 'socket-error', 'socket-closed', 'disconnected'];
 let peer = null;
 let conn = null;
 
@@ -440,9 +508,10 @@ function createRoom() {
   show($('onlineWait'));
   $('roomCode').textContent = '----';
   onlineStatus('Создаём комнату…');
+  let attempts = 0;
   const tryCreate = () => {
     const code = Array.from({ length: 4 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
-    const p = new Peer(PREFIX + code);
+    const p = new Peer(PREFIX + code, PEER_OPTS);
     peer = p;
     p.on('open', () => {
       state.online = 'host';
@@ -457,8 +526,14 @@ function createRoom() {
       });
     });
     p.on('error', (err) => {
+      console.warn('peer error:', err.type, err.message);
+      if (peer !== p) return;
       if (err.type === 'unavailable-id') { p.destroy(); tryCreate(); }
-      else onlineStatus('Ошибка сети: ' + err.type);
+      else if (RETRY_ERRORS.includes(err.type) && ++attempts <= 4) {
+        onlineStatus('Сервер занят, пробуем снова (' + attempts + ')…');
+        p.destroy();
+        setTimeout(() => { if (peer === p) tryCreate(); }, 1200);
+      } else onlineStatus('Не удалось создать комнату (' + err.type + '). Попробуй ещё раз');
     });
   };
   tryCreate();
@@ -468,24 +543,36 @@ function joinRoom(code) {
   if (typeof Peer === 'undefined') return onlineStatus('Сеть недоступна');
   code = code.trim().toUpperCase();
   if (code.length !== 4) return onlineStatus('Введи 4-символьный код');
-  onlineStatus('Подключаемся…');
-  const p = new Peer();
-  peer = p;
-  const timeout = setTimeout(() => { if (!conn) { onlineStatus('Комната не найдена'); closeOnline(); } }, 10000);
-  p.on('open', () => {
-    const c = p.connect(PREFIX + code);
-    c.on('open', () => {
-      clearTimeout(timeout);
-      state.online = 'guest';
-      bindConn(c, 'guest');
-      onlineStatus('Подключено! Ждём старта…');
+  closeOnline();
+  let attempts = 0;
+  const attempt = () => {
+    onlineStatus(attempts ? 'Сервер занят, пробуем снова (' + attempts + ')…' : 'Подключаемся…');
+    const guestId = PREFIX + 'g-' + Math.random().toString(36).slice(2, 10);
+    const p = new Peer(guestId, PEER_OPTS);
+    peer = p;
+    const fail = (msg) => { clearTimeout(timeout); if (peer === p) { onlineStatus(msg); closeOnline(); } };
+    const timeout = setTimeout(() => { if (peer === p && !conn) fail('Не удалось подключиться. Проверь код и попробуй ещё раз'); }, 20000);
+    p.on('open', () => {
+      const c = p.connect(PREFIX + code, { reliable: true });
+      c.on('open', () => {
+        clearTimeout(timeout);
+        state.online = 'guest';
+        bindConn(c, 'guest');
+        onlineStatus('Подключено! Ждём старта…');
+      });
     });
-  });
-  p.on('error', (err) => {
-    clearTimeout(timeout);
-    onlineStatus(err.type === 'peer-unavailable' ? 'Комната не найдена' : 'Ошибка сети: ' + err.type);
-    closeOnline();
-  });
+    p.on('error', (err) => {
+      console.warn('peer error:', err.type, err.message);
+      if (peer !== p) return;
+      clearTimeout(timeout);
+      if (err.type === 'peer-unavailable') return fail('Комната не найдена');
+      if (RETRY_ERRORS.includes(err.type) && ++attempts <= 4) {
+        p.destroy();
+        setTimeout(() => { if (peer === p) attempt(); }, 1200);
+      } else fail('Ошибка сети (' + err.type + '). Попробуй ещё раз');
+    });
+  };
+  attempt();
 }
 
 /* host receives guest input */
@@ -518,10 +605,12 @@ function guestMessage(m) {
   } else if (m.t === 'fx') {
     if (m.k === 'hit') {
       burst(m.x, m.y, m.d > 0 ? COLORS.blue : COLORS.red);
+      if (m.p) addPopup(m.p);
       state.shake = 5;
       beep(m.d > 0 ? 330 : 280, 0.07, 'square', 0.06);
     } else {
       burst(m.x, m.y, COLORS.yellow);
+      if (m.p) addPopup(m.p);
       state.shake = 12;
       beep(120, 0.3, 'sawtooth', 0.07);
     }
